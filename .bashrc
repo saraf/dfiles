@@ -116,5 +116,7 @@ if ! shopt -oq posix; then
     . /etc/bash_completion
   fi
 fi
-export GITHUB_TOKEN=8f72e9a100243d65e1fdc655615b5466d6efa17a
+
 [[ $- = *i* ]] && source ~/liquidprompt/liquidprompt
+
+export PROMPT_COMMAND='history -a'
