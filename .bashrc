@@ -94,6 +94,7 @@ alias cdw='cd /noderoot'
 alias ni='npm install --save'
 alias pf='pgrep -lf'
 alias cdns='ping 8.8.8.8'
+alias mar='sudo pkill -9'
 
 # Add an "alert" alias for long running commands.  Use like so:
 #   sleep 10; alert
