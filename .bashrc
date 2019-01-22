@@ -94,7 +94,38 @@ alias cdw='cd /noderoot'
 alias ni='npm install --save'
 alias pf='pgrep -lf'
 alias cdns='ping 8.8.8.8'
-alias mar='sudo pkill -9'
+alias maar='sudo pkill -9'
+alias wget='wget -c'
+
+## pass options to free ##
+alias meminfo='free -m -l -t' ## get top process eating memory
+alias psmem='ps auxf | sort -nr -k 4'
+alias psmem10='ps auxf | sort -nr -k 4 | head -10' ## get top process eating cpu ##
+alias pscpu='ps auxf | sort -nr -k 3'
+alias pscpu10='ps auxf | sort -nr -k 3 | head -10' ## Get server cpu info ##
+alias cpuinfo='lscpu'
+
+alias ports='netstat -tulanp'
+
+alias mount='mount |column -t'
+
+## get rid of command not found ##
+alias cd..='cd ..' ## a quick way to get out of current directory ##
+alias ..='cd ..'
+alias ...='cd ../../../'
+alias ....='cd ../../../../'
+alias .....='cd ../../../../'
+alias .4='cd ../../../../'
+alias .5='cd ../../../../..'
+
+# handy short cuts #
+alias h='history'
+alias j='jobs -l'
+
+alias path='echo -e ${PATH//:/\\n}'
+alias now='date +"%T"'
+alias nowtime=now
+alias nowdate='date +"%d-%m-%Y"'
 
 # Add an "alert" alias for long running commands.  Use like so:
 #   sleep 10; alert
