@@ -94,7 +94,8 @@ alias cdw='cd /noderoot'
 alias ni='npm install --save'
 alias pf='pgrep -lf'
 alias cdns='ping 8.8.8.8'
-alias maar='sudo pkill -9'
+alias maar='sudo pkill -9' #naam se maar de
+alias pmaar='sudo kill -9' #process ID ko maar de
 alias wget='wget -c'
 
 ## pass options to free ##

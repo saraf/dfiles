@@ -1,0 +1,26 @@
+#! /bin/bash
+#------------------------------------------------------------------------------
+# Create a compressed archive of the current directory, with the current 
+# timestamp in the filename, and stores it in the parent directory.
+#
+# for example: if run in a directory named pre-evk
+#              it will create the following snapshot file in the parent folder
+#              pre-evk-25-01-2019.00-28-49-343907345.tar.bz2
+#              
+#              timestamp is date-month-year.hour-minute-second-nanoseconds               
+#------------------------------------------------------------------------------
+
+cdate=$(date --iso)
+timestamp=$(date "+%d-%m-%Y.%H-%M-%S-%N")
+foldername=${PWD##*/} 
+tarfilename=$foldername'-'$timestamp."tar.bz2"
+
+echo "Starting snapshot creation of $foldername at $timestamp. The filename is $tarfilename"
+cd ..
+backupdir=${PWD} 
+tar cvjf "$tarfilename" "$foldername"
+cd "$foldername"
+echo "Created a snapshot of $foldername in $backupdir/$tarfilename"
+
+#note: uncomment the following only if running on a machine with a UI
+#notify-send --expire-time=60000 -i ~/bin/safe.png "Backup" "Backed up $foldername in $backupdir/$tarfilename"
