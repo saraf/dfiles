@@ -18,6 +18,7 @@ shopt -s histappend
 # for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
 HISTSIZE=100000
 HISTFILESIZE=200000
+export HISTTIMEFORMAT="%F %T "
 
 # check the window size after each command and, if necessary,
 # update the values of LINES and COLUMNS.
@@ -113,8 +114,8 @@ alias mount='mount |column -t'
 ## get rid of command not found ##
 alias cd..='cd ..' ## a quick way to get out of current directory ##
 alias ..='cd ..'
-alias ...='cd ../../../'
-alias ....='cd ../../../../'
+alias ...='cd ../../'
+alias ....='cd ../../../'
 alias .....='cd ../../../../'
 alias .4='cd ../../../../'
 alias .5='cd ../../../../..'
@@ -154,4 +155,6 @@ fi
 
 [[ $- = *i* ]] && source ~/liquidprompt/liquidprompt
 
+alias lq='source ~/liquidprompt/liquidprompt'
 export PROMPT_COMMAND='history -a'
+[ -f ~/.fzf.bash ] && source ~/.fzf.bash
