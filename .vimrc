@@ -61,3 +61,5 @@ function! s:Underline(chars)
   put =strpart(uline, 0, nr_columns)
 endfunction
 command! -nargs=? Underline call s:Underline(<q-args>)
+
+cmap w!! w !sudo tee > /dev/null %
