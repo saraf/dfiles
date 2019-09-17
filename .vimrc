@@ -63,3 +63,4 @@ endfunction
 command! -nargs=? Underline call s:Underline(<q-args>)
 
 cmap w!! w !sudo tee > /dev/null %
+nnoremap <silent> yaf [m{jV]m%y
