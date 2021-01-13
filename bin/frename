@@ -1,0 +1,70 @@
+#!/usr/bin/perl
+
+use Getopt::Std;
+
+$usage = <<USAGE;
+rename - renames files via a Perl expression. Adapted from Larry Wall's
+         program in the first (pink) edition of the Camel book.
+
+usage: rename [options] '<perl expr>' files
+options:
+    -t:   test - show how the renaming would be done, but don't do it
+    -f:   force - overwrite existing file if target exists 
+    -h:   help - print this message
+    -v:   verbose - print detailed results
+
+The Perl expression is mandatory. A variable, $n, can be used in the Perl
+expression to insert a sequence number into the new name. The files can
+be listed on the command line, piped in through STDIN, or given in a file,
+one per line.
+USAGE
+
+# Process options.
+getopts('thf', \%opt);
+die $usage if ($opt{h});
+
+# Make sure there's a perl expression.
+($perlexpr = shift) || die $usage;
+
+# Handle the different ways of getting the file names.
+chomp(@ARGV = <STDIN>) unless @ARGV;
+
+# Set up a one-based file counting variable.
+$n = 1;
+
+# Do the renaming or show how it would be done.
+foreach (@ARGV) {
+  $old = $_;
+  eval $perlexpr;
+  die $@ if $@;
+
+  next if $old eq $_; #just skip if there is no change in the name
+  if ($opt{t}) { #test mode - do not rename - just show what would happen
+    if(-e $_ and $opt{f}) {
+        print "EXISTS - WILL OVERWRITE! $old => $_\n";
+    }
+    elsif (-e $_ and !$opt{f}) {
+    	print "EXISTS - WILL IGNORE. Use -f to force overwrite. $old => $_\n";
+    }
+    else {
+    	print "$old => $_\n";
+    }
+  }
+  else { #do the renaming
+    if(-e $_ and !$opt{f}) {
+	print "$old not renamed, $_ already exists. Use -f to force\n";
+    }
+    else {
+    	$rename_return_value = rename($old, $_);
+        if ($opt{v}){
+            if ($rename_return_value == 1) {
+	        print "Renamed successfully. $rename_return_value\n";
+            }
+	    else {
+	        print "rename() call failed! Ret val: $rename_return_value.\n";
+	    }
+        }
+    }
+  }
+  $n++;
+}
