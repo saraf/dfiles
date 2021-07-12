@@ -1,0 +1,28 @@
+#!/bin/bash
+#------------------------------------------------------------------
+# This script will create a folder named "bhav" in your home 
+# directory. Then inside that a tree structure like:
+# dev@oceanserve-s-2vcpu-4gb-blr1-01:~/bhav$ tree -d
+#.
+#└── bse
+#    ├── 2020
+#    │   └── csv
+#    ├── 2021
+#    │   └── csv 
+#    ...
+# inside the csv folder will be the EOD Bombay Stock Exchange price
+# data like the following:
+#DATE,SYMBOL,NAME,SC_GROUP,SC_TYPE,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,NO_TRADES,VOLUME,NET_TURNOV,TDCLOINDI
+#01/01/2021,500002,ABB LTD.    ,A ,Q,1214.15,1238.00,1214.15,1233.45,1234.50,1212.15,507,5192,6373178.00,
+#01/01/2021,500003,AEGIS LOGIS ,A ,Q,252.00,258.00,249.85,255.05,255.45,251.80,729,10250,2606022.00, 0
+# ...
+#
+# In order for this to work - you need to install bhav first
+# sudo pip3 install bhav
+# Then configure it thus with the following two commands
+# bhav conf update -b http://www.bseindia.com/download/BhavCopy/Equity/EQ#-#day#-##-#month#-##-#YY#-#_CSV.zip
+# bhav conf update -B 'SYMBOL,NAME,SC_GROUP,SC_TYPE,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,NO_TRADES,VOLUME,NET_TURNOV,TDCLOINDI'
+#-------------------------------------------------------------------
+date=$(date '+%Y%m%d')
+printf $date
+bhav bse --start-date $date --end-date $date -z
