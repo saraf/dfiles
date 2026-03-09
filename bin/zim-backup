@@ -1,4 +1,74 @@
 #!/bin/bash
+#
+# zim-backup
+# ----------
+#
+# Create a compressed snapshot backup of a Zim notebook and upload it
+# to Dropbox using rclone.
+#
+# The notebook is archived as:
+#
+#     zim-YYYY-MM-DD.tar.zst
+#
+# Compression uses Zstandard (zstd) for fast and efficient compression.
+#
+# The internal Zim metadata directory `.zim/` is excluded because it
+# contains temporary SQLite indexes that Zim rebuilds automatically.
+#
+# Resulting archives are stored in:
+#
+#     dropbox:ZimBackups
+#
+#
+# Restore Example
+# ---------------
+#
+# Download an archive and extract it:
+#
+#     tar -I zstd -xf zim-2026-03-09.tar.zst
+#
+# This recreates the Zim notebook directory.
+#
+#
+# Dependencies
+# ------------
+#
+# Install required tools with:
+#
+#     sudo apt install rclone zstd
+#
+#
+# Usage
+# -----
+#
+#     zim-backup
+#     zim-backup --help
+#
+
+show_help() {
+cat << EOF
+zim-backup
+
+Create a compressed backup of the Zim notebook and upload it to Dropbox.
+
+Usage:
+  zim-backup        Create and upload backup
+  zim-backup -h     Show help
+  zim-backup --help Show help
+
+Backups are stored as:
+
+  dropbox:ZimBackups/zim-YYYY-MM-DD.tar.zst
+
+The .zim directory is excluded because it contains temporary index files.
+EOF
+}
+
+if [[ "$1" == "--help" || "$1" == "-h" || "$1" == "help" ]]; then
+    show_help
+    exit 0
+fi
+
 
 NOTEBOOK="$HOME/ZimNotes"
 TMPDIR="/tmp/zim_backup"
@@ -17,33 +87,55 @@ echo "        ZIM BACKUP TOOL"
 echo "=============================="
 echo
 
-# Check if zstd exists
+
+# Dependency checks
+
 if ! command -v zstd >/dev/null 2>&1; then
     echo -e "${RED}Error: zstd is not installed.${NC}"
     echo
-    echo "This script requires the Zstandard compressor."
-    echo
     echo "Install it with:"
     echo
-    echo "    sudo apt install zstd"
+    echo "  sudo apt install zstd"
     echo
     exit 1
 fi
 
+if ! command -v rclone >/dev/null 2>&1; then
+    echo -e "${RED}Error: rclone is not installed.${NC}"
+    echo
+    echo "Install it with:"
+    echo
+    echo "  sudo apt install rclone"
+    echo
+    exit 1
+fi
+
+
+# Ensure backup directory exists in Dropbox
+
+echo -e "${YELLOW}Ensuring Dropbox backup directory exists...${NC}"
+rclone mkdir "$REMOTE"
+
+
+# Create temporary working directory
+
 mkdir -p "$TMPDIR"
+
 
 echo -e "${YELLOW}Creating compressed archive...${NC}"
 
 tar \
-  --exclude='.zim/index.db' \
+  --exclude='.zim/**' \
   -I 'zstd -19' \
   -cf "$TMPDIR/$ARCHIVE" \
   -C "$HOME" ZimNotes
+
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}Backup creation failed.${NC}"
     exit 1
 fi
+
 
 echo -e "${GREEN}Archive created:${NC}"
 ls -lh "$TMPDIR/$ARCHIVE"
@@ -51,12 +143,16 @@ ls -lh "$TMPDIR/$ARCHIVE"
 echo
 echo -e "${YELLOW}Uploading to Dropbox...${NC}"
 
-rclone copy "$TMPDIR/$ARCHIVE" "$REMOTE"
+rclone copy "$TMPDIR/$ARCHIVE" "$REMOTE" \
+    --transfers 4 \
+    --progress
+
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}Upload failed.${NC}"
     exit 1
 fi
+
 
 echo -e "${GREEN}Upload complete.${NC}"
 
