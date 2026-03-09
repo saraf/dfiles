@@ -3,20 +3,70 @@
 set -o pipefail
 
 # ==========================================================
+# zim-backup
+# ==========================================================
+#
+# Create a compressed snapshot backup of the Zim notebook.
+#
+# Features
+# --------
+#
+# • Archives the notebook using Zstandard compression
+# • Excludes the `.zim/` metadata directory
+# • Uploads backups to Dropbox via rclone
+# • Automatically prunes older backups (keeps last N)
+# • Supports local-only backups
+#
+# Backup naming format:
+#
+#   zim-YYYY-MM-DD_HH-MM-SS.tar.zst
+#
+# Examples:
+#
+#   zim-2026-03-09_23-52-48.tar.zst
+#
+# Usage
+# -----
+#
+#   zim-backup
+#       Create backup and upload to Dropbox
+#
+#   zim-backup --local-only
+#       Create backup locally only (stored in ~/ZimBackups)
+#
+#   zim-backup --help
+#
+# First-time setup
+# ----------------
+#
+# Ensure rclone is configured with a Dropbox remote:
+#
+#   rclone config
+#
+# ==========================================================
+
+
+# ==========================================================
 # Configuration
 # ==========================================================
 
 NOTEBOOK="$HOME/ZimNotes"
-TMPDIR="/tmp/zim_backup"
 REMOTE="dropbox:ZimBackups"
 
-DATE=$(date +%Y-%m-%d)
-ARCHIVE="zim-$DATE.tar.zst"
+LOCAL_BACKUP_DIR="$HOME/ZimBackups"
+TMPDIR="/tmp/zim_backup"
+
+KEEP_BACKUPS=20
+
+TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
+ARCHIVE="zim-$TIMESTAMP.tar.zst"
 
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
 RED='\033[1;31m'
 NC='\033[0m'
+
+LOCAL_ONLY=false
 
 
 # ==========================================================
@@ -30,20 +80,24 @@ cat << EOF
 zim-backup
 ----------
 
-Create a compressed snapshot backup of the Zim notebook and upload it
-to Dropbox using rclone.
+Create a compressed snapshot backup of the Zim notebook.
 
-Backups are stored as:
+Backups are compressed with zstd and stored with timestamps:
 
-  $REMOTE/zim-YYYY-MM-DD.tar.zst
-
-The .zim directory is excluded because it contains temporary
-metadata (SQLite indexes) that Zim rebuilds automatically.
+  zim-YYYY-MM-DD_HH-MM-SS.tar.zst
 
 Usage:
 
   zim-backup
+      Create backup and upload to Dropbox
+
+  zim-backup --local-only
+      Create backup locally only (stored in ~/ZimBackups)
+
   zim-backup --help
+
+The .zim directory is excluded because it contains temporary
+metadata (SQLite indexes) that Zim rebuilds automatically.
 
 EOF
 
@@ -136,12 +190,39 @@ upload_backup() {
 }
 
 
-cleanup() {
-
-    rm -f "$TMPDIR/$ARCHIVE"
+prune_old_backups() {
 
     echo
-    echo -e "${GREEN}Temporary archive removed.${NC}"
+    echo -e "${YELLOW}Pruning old backups (keeping last $KEEP_BACKUPS)...${NC}"
+
+    rclone lsf "$REMOTE" \
+        | grep '^zim-' \
+        | sort -r \
+        | tail -n +$((KEEP_BACKUPS+1)) \
+        | while read -r old; do
+            echo "Deleting $old"
+            rclone deletefile "$REMOTE/$old"
+        done
+
+}
+
+
+store_local_backup() {
+
+    mkdir -p "$LOCAL_BACKUP_DIR"
+
+    mv "$TMPDIR/$ARCHIVE" "$LOCAL_BACKUP_DIR/"
+
+    echo
+    echo -e "${GREEN}Local backup stored:${NC}"
+    echo "  $LOCAL_BACKUP_DIR/$ARCHIVE"
+
+}
+
+
+cleanup_tmp() {
+
+    rm -f "$TMPDIR/$ARCHIVE" 2>/dev/null
 
 }
 
@@ -153,6 +234,10 @@ cleanup() {
 if [[ "$1" == "--help" || "$1" == "-h" || "$1" == "help" ]]; then
     show_help
     exit 0
+fi
+
+if [[ "$1" == "--local-only" ]]; then
+    LOCAL_ONLY=true
 fi
 
 
@@ -167,25 +252,40 @@ echo "=============================="
 echo
 
 check_prerequisites
-check_remote
 
 create_archive
+
+if $LOCAL_ONLY; then
+    echo
+    echo -e "${YELLOW}Local-only mode enabled.${NC}"
+    store_local_backup
+    exit 0
+fi
+
+
+check_remote
 
 echo
 echo -e "${YELLOW}Checking Dropbox connectivity...${NC}"
 
 if check_online; then
+
     echo -e "${GREEN}Dropbox reachable.${NC}"
+
     upload_backup
+    prune_old_backups
+
 else
-    echo -e "${RED}Dropbox unreachable — skipping upload.${NC}"
-    echo
-    echo "Backup archive remains at:"
-    echo "  $TMPDIR/$ARCHIVE"
+
+    echo -e "${RED}Dropbox unreachable — storing backup locally.${NC}"
+
+    store_local_backup
     exit 1
+
 fi
 
-cleanup
+
+cleanup_tmp
 
 echo
 echo -e "${GREEN}Backup finished successfully.${NC}"
