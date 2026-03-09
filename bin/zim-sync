@@ -1,0 +1,28 @@
+#!/bin/bash
+#
+# Note: set up rclone dropbox remote first
+#       then sync notes for the first time using
+#       rclone bisync dropbox:"daily notes 3 from may 2k21" ~/ZimNotes --resync
+#
+NOTEBOOK="$HOME/ZimNotes/zim"
+REMOTE="dropbox:daily notes 3 from may 2k21"
+
+echo "Syncing from Dropbox..."
+
+rclone bisync "$REMOTE" "$NOTEBOOK" \
+  --exclude ".zim/index.db" \
+  --resilient \
+  --check-access
+
+echo "Starting Zim..."
+
+zim "$NOTEBOOK"
+
+echo "Zim closed. Syncing changes..."
+
+rclone bisync "$REMOTE" "$NOTEBOOK" \
+  --exclude ".zim/index.db" \
+  --resilient \
+  --check-access
+
+echo "Sync complete."
