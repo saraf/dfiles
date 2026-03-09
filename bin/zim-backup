@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NOTEBOOK="$HOME/ZimNotes/zim"
+NOTEBOOK="$HOME/ZimNotes"
 TMPDIR="/tmp/zim_backup"
 DATE=$(date +%Y-%m-%d)
 ARCHIVE="zim-$DATE.tar.zst"

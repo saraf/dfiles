@@ -107,8 +107,8 @@ if [[ "$1" == "--help" || "$1" == "-h" ]]; then
 fi
 
 
-NOTEBOOK="$HOME/ZimNotes/zim"
-REMOTE="dropbox:daily notes 3 from may 2k21"
+NOTEBOOK="$HOME/ZimNotes"
+REMOTE="dropbox:daily notes 3 from may 2k21/zim"
 
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
