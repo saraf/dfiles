@@ -1,68 +1,154 @@
 #!/bin/bash
-#
-# zim-backup
-# ----------
-#
-# Create a compressed snapshot backup of a Zim notebook and upload it
-# to Dropbox using rclone.
-#
-# The notebook is archived as:
-#
-#     zim-YYYY-MM-DD.tar.zst
-#
-# Compression uses Zstandard (zstd) for fast and efficient compression.
-#
-# The internal Zim metadata directory `.zim/` is excluded because it
-# contains temporary SQLite indexes that Zim rebuilds automatically.
-#
-# Resulting archives are stored in:
-#
-#     dropbox:ZimBackups
-#
-#
-# Restore Example
-# ---------------
-#
-# Download an archive and extract it:
-#
-#     tar -I zstd -xf zim-2026-03-09.tar.zst
-#
-# This recreates the Zim notebook directory.
-#
-#
-# Dependencies
-# ------------
-#
-# Install required tools with:
-#
-#     sudo apt install rclone zstd
-#
-#
-# Usage
-# -----
-#
-#     zim-backup
-#     zim-backup --help
-#
+
+set -o pipefail
+
+# ==========================================================
+# Configuration
+# ==========================================================
+
+NOTEBOOK="$HOME/ZimNotes"
+TMPDIR="/tmp/zim_backup"
+REMOTE="dropbox:ZimBackups"
+
+DATE=$(date +%Y-%m-%d)
+ARCHIVE="zim-$DATE.tar.zst"
+
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+RED='\033[1;31m'
+NC='\033[0m'
+
+
+# ==========================================================
+# Functions
+# ==========================================================
 
 show_help() {
+
 cat << EOF
+
 zim-backup
+----------
 
-Create a compressed backup of the Zim notebook and upload it to Dropbox.
-
-Usage:
-  zim-backup        Create and upload backup
-  zim-backup -h     Show help
-  zim-backup --help Show help
+Create a compressed snapshot backup of the Zim notebook and upload it
+to Dropbox using rclone.
 
 Backups are stored as:
 
-  dropbox:ZimBackups/zim-YYYY-MM-DD.tar.zst
+  $REMOTE/zim-YYYY-MM-DD.tar.zst
 
-The .zim directory is excluded because it contains temporary index files.
+The .zim directory is excluded because it contains temporary
+metadata (SQLite indexes) that Zim rebuilds automatically.
+
+Usage:
+
+  zim-backup
+  zim-backup --help
+
 EOF
+
 }
+
+
+check_prerequisites() {
+
+    for cmd in rclone tar zstd; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo
+            echo "Error: required command '$cmd' not found."
+            echo
+            echo "Install it with:"
+            echo "  sudo apt install $cmd"
+            echo
+            exit 1
+        fi
+    done
+
+}
+
+
+check_remote() {
+
+    if ! rclone listremotes | grep -q "^${REMOTE%%:*}:"; then
+        echo
+        echo "Error: rclone remote '${REMOTE%%:*}' is not configured."
+        echo
+        echo "Run:"
+        echo "  rclone config"
+        echo
+        exit 1
+    fi
+
+}
+
+
+check_online() {
+
+    rclone about "${REMOTE%%:*}:" &>/dev/null
+
+}
+
+
+create_archive() {
+
+    echo -e "${YELLOW}Creating compressed archive...${NC}"
+
+    mkdir -p "$TMPDIR"
+
+    tar \
+        --exclude='.zim/**' \
+        -I 'zstd -19' \
+        -cf "$TMPDIR/$ARCHIVE" \
+        -C "$HOME" "$(basename "$NOTEBOOK")"
+
+    STATUS=$?
+
+    if [[ $STATUS -ne 0 ]]; then
+        echo -e "${RED}Backup creation failed.${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}Archive created:${NC}"
+    ls -lh "$TMPDIR/$ARCHIVE"
+
+}
+
+
+upload_backup() {
+
+    echo
+    echo -e "${YELLOW}Uploading backup to Dropbox...${NC}"
+
+    rclone mkdir "$REMOTE"
+
+    rclone copy "$TMPDIR/$ARCHIVE" "$REMOTE" \
+        --log-level INFO
+
+    STATUS=$?
+
+    if [[ $STATUS -ne 0 ]]; then
+        echo -e "${RED}Upload failed.${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}Upload complete.${NC}"
+
+}
+
+
+cleanup() {
+
+    rm -f "$TMPDIR/$ARCHIVE"
+
+    echo
+    echo -e "${GREEN}Temporary archive removed.${NC}"
+
+}
+
+
+# ==========================================================
+# Argument parsing
+# ==========================================================
 
 if [[ "$1" == "--help" || "$1" == "-h" || "$1" == "help" ]]; then
     show_help
@@ -70,16 +156,9 @@ if [[ "$1" == "--help" || "$1" == "-h" || "$1" == "help" ]]; then
 fi
 
 
-NOTEBOOK="$HOME/ZimNotes"
-TMPDIR="/tmp/zim_backup"
-DATE=$(date +%Y-%m-%d)
-ARCHIVE="zim-$DATE.tar.zst"
-REMOTE="dropbox:ZimBackups"
-
-GREEN='\033[1;32m'
-YELLOW='\033[1;33m'
-RED='\033[1;31m'
-NC='\033[0m'
+# ==========================================================
+# Main program
+# ==========================================================
 
 echo
 echo "=============================="
@@ -87,78 +166,27 @@ echo "        ZIM BACKUP TOOL"
 echo "=============================="
 echo
 
+check_prerequisites
+check_remote
 
-# Dependency checks
-
-if ! command -v zstd >/dev/null 2>&1; then
-    echo -e "${RED}Error: zstd is not installed.${NC}"
-    echo
-    echo "Install it with:"
-    echo
-    echo "  sudo apt install zstd"
-    echo
-    exit 1
-fi
-
-if ! command -v rclone >/dev/null 2>&1; then
-    echo -e "${RED}Error: rclone is not installed.${NC}"
-    echo
-    echo "Install it with:"
-    echo
-    echo "  sudo apt install rclone"
-    echo
-    exit 1
-fi
-
-
-# Ensure backup directory exists in Dropbox
-
-echo -e "${YELLOW}Ensuring Dropbox backup directory exists...${NC}"
-rclone mkdir "$REMOTE"
-
-
-# Create temporary working directory
-
-mkdir -p "$TMPDIR"
-
-
-echo -e "${YELLOW}Creating compressed archive...${NC}"
-
-tar \
-  --exclude='.zim/**' \
-  -I 'zstd -19' \
-  -cf "$TMPDIR/$ARCHIVE" \
-  -C "$HOME" ZimNotes
-
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Backup creation failed.${NC}"
-    exit 1
-fi
-
-
-echo -e "${GREEN}Archive created:${NC}"
-ls -lh "$TMPDIR/$ARCHIVE"
+create_archive
 
 echo
-echo -e "${YELLOW}Uploading to Dropbox...${NC}"
+echo -e "${YELLOW}Checking Dropbox connectivity...${NC}"
 
-rclone copy "$TMPDIR/$ARCHIVE" "$REMOTE" \
-    --transfers 4 \
-    --progress
-
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Upload failed.${NC}"
+if check_online; then
+    echo -e "${GREEN}Dropbox reachable.${NC}"
+    upload_backup
+else
+    echo -e "${RED}Dropbox unreachable — skipping upload.${NC}"
+    echo
+    echo "Backup archive remains at:"
+    echo "  $TMPDIR/$ARCHIVE"
     exit 1
 fi
 
+cleanup
 
-echo -e "${GREEN}Upload complete.${NC}"
-
-rm "$TMPDIR/$ARCHIVE"
-
-echo -e "${GREEN}Temporary archive removed.${NC}"
 echo
 echo -e "${GREEN}Backup finished successfully.${NC}"
 echo
