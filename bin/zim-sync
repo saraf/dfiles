@@ -6,102 +6,25 @@ cat << 'EOF'
 # --------
 # Launch Zim with automatic Dropbox synchronization using rclone bisync.
 #
-# The script performs the following workflow:
+# Workflow
+# --------
+# 1. Check whether Dropbox is reachable
+# 2. If online, synchronize the notebook with Dropbox
+# 3. Launch Zim
+# 4. When Zim exits, synchronize changes back to Dropbox
 #
-#   1. Check whether Dropbox is reachable
-#   2. If online, synchronize the notebook with Dropbox
-#   3. Launch Zim
-#   4. When Zim exits, synchronize changes back to Dropbox
+# The entire `.zim/` directory is excluded because it contains temporary
+# metadata (SQLite indexes) that Zim automatically rebuilds.
 #
-# If the system is offline (for example at an airport or on a flight),
-# the script simply skips synchronization and allows Zim to run normally.
-# The next time the script runs while online, the notebook will sync.
+# Usage:
 #
-# The Zim SQLite index database (.zim/index.db) is excluded from sync
-# because it is automatically rebuilt by Zim and can cause conflicts.
+#   zim-sync
+#   zim-sync --help
 #
-#
-# ------------------------------------------------------------
-# FIRST-TIME SETUP
-# ------------------------------------------------------------
-#
-# 1. Install required packages
-#
-#       sudo apt install rclone zim zstd
-#
-#
-# 2. Configure Dropbox remote in rclone
-#
-#       rclone config
-#
-#   Choose:
-#
-#       n) New remote
-#       name: dropbox
-#       storage: dropbox
-#
-#   Leave client_id and client_secret blank and authorize via browser.
-#
-#
-# 3. Create a local notebook directory
-#
-#       mkdir -p ~/ZimNotes
-#
-#
-# 4. Ensure the notebook folder exists in Dropbox
-#
-#       rclone mkdir "dropbox:ZimNotes"
-#       note: (for Aalhad Saraf - this is "dropbox:daily notes 3 from may 2k21"
-#
-#
-# 5. Run this script
-#
-#       zim-sync
-#
-#   On the first run the script automatically initializes rclone bisync.
-#
-#
-# ------------------------------------------------------------
-# NOTEBOOK LOCATION
-# ------------------------------------------------------------
-#
-# Local notebook:
-#
-#       ~/ZimNotes
-#       note: (for Aalhad Saraf - this is "~/ZimNotes/zim"
-#
-# Dropbox location:
-#
-#       dropbox:ZimNotes
-#       note: (for Aalhad Saraf - this is "dropbox:daily notes 3 from may 2k21"
-#
-#
-# ------------------------------------------------------------
-# OFFLINE BEHAVIOR
-# ------------------------------------------------------------
-#
-# If Dropbox cannot be reached:
-#
-#   - synchronization is skipped
-#   - Zim opens normally
-#   - changes remain local
-#
-# When the script is run again while online, synchronization resumes.
-#
-#
-# ------------------------------------------------------------
-# AUTHOR NOTE
-# ------------------------------------------------------------
-#
-# This script is designed for dotfiles environments where the same
-# notebook is used across multiple machines (e.g. Linux laptop +
-# Windows laptop with Dropbox client).
-
 EOF
 }
 
-# Show help if requested
-if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+if [[ "$1" == "--help" || "$1" == "-h" || "$1" == "help" ]]; then
     show_help
     exit 0
 fi
@@ -121,16 +44,19 @@ echo "        ZIM SYNC TOOL"
 echo "============================="
 echo
 
+
 check_online() {
-    rclone lsf "$REMOTE" --max-depth 0 &>/dev/null
+    rclone about dropbox: &>/dev/null
 }
+
 
 bisync_initialized() {
     rclone bisync "$REMOTE" "$NOTEBOOK" \
         --check-access \
-        --exclude ".zim/index.db" \
+        --exclude ".zim/**" \
         --dry-run &>/dev/null
 }
+
 
 run_bisync() {
 
@@ -139,8 +65,13 @@ run_bisync() {
         echo -e "${GREEN}Running bisync...${NC}"
 
         rclone bisync "$REMOTE" "$NOTEBOOK" \
-            --exclude ".zim/index.db" \
+            --exclude ".zim/**" \
             --resilient \
+            --fast-list \
+            --checkers 12 \
+            --transfers 6 \
+            --size-only \
+            --dropbox-batch-mode async \
             --progress
 
     else
@@ -149,11 +80,17 @@ run_bisync() {
 
         rclone bisync "$REMOTE" "$NOTEBOOK" \
             --resync \
-            --exclude ".zim/index.db" \
+            --exclude ".zim/**" \
             --resilient \
+            --fast-list \
+            --checkers 12 \
+            --transfers 6 \
+            --size-only \
+            --dropbox-batch-mode async \
             --progress
     fi
 }
+
 
 echo -e "${YELLOW}Checking Dropbox connectivity...${NC}"
 
@@ -171,7 +108,6 @@ zim "$NOTEBOOK"
 
 echo
 echo -e "${YELLOW}Zim closed.${NC}"
-
 echo -e "${YELLOW}Checking connectivity again...${NC}"
 
 if check_online; then
@@ -182,4 +118,3 @@ fi
 
 echo
 echo -e "${GREEN}Done.${NC}"
-
