@@ -30,6 +30,39 @@ if [[ "$1" == "--help" || "$1" == "-h" || "$1" == "help" ]]; then
 fi
 
 
+LOCKFILE="/tmp/zim-sync.lock"
+
+exec 200>"$LOCKFILE"
+
+if ! flock -n 200; then
+    OTHER_PID=$(cat "$LOCKFILE" 2>/dev/null)
+
+    echo
+    echo "Another zim-sync process is already running (PID $OTHER_PID)."
+    echo
+
+    if [[ -n "$OTHER_PID" ]]; then
+        echo "Inspect it with:"
+        echo "  ps -fp $OTHER_PID"
+        echo
+        echo "If it is stuck you may terminate it with:"
+        echo "  kill $OTHER_PID"
+    fi
+
+    echo
+    exit 1
+fi
+
+# record our PID
+echo $$ >&200
+
+cleanup() {
+    flock -u 200
+}
+
+trap cleanup EXIT
+
+
 NOTEBOOK="$HOME/ZimNotes"
 REMOTE="dropbox:daily notes 3 from may 2k21/zim"
 
