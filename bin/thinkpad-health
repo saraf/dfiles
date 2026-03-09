@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+echo "==============================="
+echo " ThinkPad System Health Report "
+echo "==============================="
+
+echo
+echo "Laptop:"
+echo "  Model:  $(sudo dmidecode -s system-version)"
+echo "  Serial: $(sudo dmidecode -s system-serial-number)"
+
+echo
+echo "OS:"
+echo "  Kernel: $(uname -r)"
+echo "  Uptime: $(uptime -p)"
+
+echo
+echo "CPU:"
+lscpu | grep "Model name" | sed 's/Model name:\s*/  /'
+
+echo
+echo "Memory:"
+free -h | awk '/Mem:/ {print "  RAM:", $2, "(Used:", $3 ")"}'
+
+echo
+echo "Disk:"
+lsblk -d -o NAME,SIZE,MODEL | grep -E 'nvme|sda' | awk '{print "  "$0}'
+
+echo
+echo "Battery:"
+FULL=$(cat /sys/class/power_supply/BAT0/energy_full)
+DESIGN=$(cat /sys/class/power_supply/BAT0/energy_full_design)
+CYCLES=$(cat /sys/class/power_supply/BAT0/cycle_count)
+
+HEALTH=$(awk "BEGIN {printf \"%.1f\", ($FULL/$DESIGN)*100}")
+
+echo "  Health:  $HEALTH %"
+echo "  Cycles:  $CYCLES"
+echo "  Capacity: $FULL / $DESIGN mWh"
+
+echo
+echo "Temperatures:"
+sensors 2>/dev/null | grep -E 'Package id|Tctl|Composite' | sed 's/^/  /'
+
+echo
+echo "==============================="
