@@ -1,28 +1,119 @@
 #!/bin/bash
-#
+
+set -o pipefail
+
+# ==========================================================
+# Configuration
+# ==========================================================
+
+NOTEBOOK="$HOME/ZimNotes"
+REMOTE="dropbox:daily notes 3 from may 2k21/zim"
+LOCKFILE="/tmp/zim-sync.lock"
+
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+RED='\033[1;31m'
+NC='\033[0m'
+
+
+# ==========================================================
+# Functions
+# ==========================================================
+
 show_help() {
-cat << 'EOF'
-# zim-sync
-# --------
-# Launch Zim with automatic Dropbox synchronization using rclone bisync.
-#
-# Workflow
-# --------
-# 1. Check whether Dropbox is reachable
-# 2. If online, synchronize the notebook with Dropbox
-# 3. Launch Zim
-# 4. When Zim exits, synchronize changes back to Dropbox
-#
-# The entire `.zim/` directory is excluded because it contains temporary
-# metadata (SQLite indexes) that Zim automatically rebuilds.
-#
-# Usage:
-#
-#   zim-sync
-#   zim-sync --help
-#
+
+cat << EOF
+
+zim-sync
+--------
+
+Launch Zim with automatic Dropbox synchronization using rclone bisync.
+
+Workflow
+--------
+
+1. Sync notebook with Dropbox
+2. Launch Zim
+3. Sync again after Zim exits
+
+If offline, syncing is skipped and Zim runs normally.
+
+First-time setup
+----------------
+
+Run once manually:
+
+  rclone bisync "$REMOTE" "$NOTEBOOK" --resync
+
+Usage
+-----
+
+  zim-sync
+  zim-sync --help
+
 EOF
+
 }
+
+
+check_prerequisites() {
+
+    for cmd in rclone zim flock; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo
+            echo "Error: required command '$cmd' not found."
+            echo
+            echo "Install it with:"
+            echo "  sudo apt install $cmd"
+            echo
+            exit 1
+        fi
+    done
+
+}
+
+
+check_online() {
+
+    rclone about "${REMOTE%%:*}:" &>/dev/null
+
+}
+
+
+run_bisync() {
+
+    echo -e "${YELLOW}Running bisync...${NC}"
+
+    rclone bisync "$REMOTE" "$NOTEBOOK" \
+        --exclude ".zim/**" \
+        --resilient \
+        --fast-list \
+        --checkers 8 \
+        --transfers 4 \
+        --size-only \
+        --dropbox-batch-mode async \
+        --no-update-modtime \
+        --log-level INFO
+
+    STATUS=$?
+
+    if [[ $STATUS -ne 0 ]]; then
+        echo
+        echo "Bisync failed."
+        echo
+        echo "If this is the first run, initialize with:"
+        echo "  rclone bisync \"$REMOTE\" \"$NOTEBOOK\" --resync"
+        echo
+        return 1
+    fi
+
+    echo -e "${GREEN}✓ Notebook synchronized.${NC}"
+}
+
+
+# ==========================================================
+# Argument parsing
+# ==========================================================
 
 if [[ "$1" == "--help" || "$1" == "-h" || "$1" == "help" ]]; then
     show_help
@@ -30,7 +121,22 @@ if [[ "$1" == "--help" || "$1" == "-h" || "$1" == "help" ]]; then
 fi
 
 
-LOCKFILE="/tmp/zim-sync.lock"
+# ==========================================================
+# Main program
+# ==========================================================
+
+echo
+echo "============================="
+echo "        ZIM SYNC TOOL"
+echo "============================="
+echo
+
+check_prerequisites
+
+
+# ----------------------------------------------------------
+# Lock protection
+# ----------------------------------------------------------
 
 exec 200>"$LOCKFILE"
 
@@ -45,7 +151,7 @@ if ! flock -n 200; then
         echo "Inspect it with:"
         echo "  ps -fp $OTHER_PID"
         echo
-        echo "If it is stuck you may terminate it with:"
+        echo "Terminate if needed:"
         echo "  kill $OTHER_PID"
     fi
 
@@ -53,7 +159,6 @@ if ! flock -n 200; then
     exit 1
 fi
 
-# record our PID
 echo $$ >&200
 
 cleanup() {
@@ -63,81 +168,39 @@ cleanup() {
 trap cleanup EXIT
 
 
-NOTEBOOK="$HOME/ZimNotes"
-REMOTE="dropbox:daily notes 3 from may 2k21/zim"
-
-GREEN='\033[1;32m'
-YELLOW='\033[1;33m'
-RED='\033[1;31m'
-NC='\033[0m'
-
-echo
-echo "============================="
-echo "        ZIM SYNC TOOL"
-echo "============================="
-echo
-
-
-check_online() {
-    rclone about dropbox: &>/dev/null
-}
-
-
-bisync_initialized() {
-    rclone bisync "$REMOTE" "$NOTEBOOK" \
-        --check-access \
-        --exclude ".zim/**" \
-        --dry-run &>/dev/null
-}
-
-
-run_bisync() {
-
-    if bisync_initialized; then
-
-        echo -e "${GREEN}Running bisync...${NC}"
-
-        rclone bisync "$REMOTE" "$NOTEBOOK" \
-            --exclude ".zim/**" \
-            --resilient \
-            --fast-list \
-            --checkers 12 \
-            --transfers 6 \
-            --size-only \
-            --dropbox-batch-mode async \
-            --progress
-
-    else
-
-        echo -e "${YELLOW}First run detected — initializing bisync state...${NC}"
-
-        rclone bisync "$REMOTE" "$NOTEBOOK" \
-            --resync \
-            --exclude ".zim/**" \
-            --resilient \
-            --fast-list \
-            --checkers 12 \
-            --transfers 6 \
-            --size-only \
-            --dropbox-batch-mode async \
-            --progress
-    fi
-}
-
+# ----------------------------------------------------------
+# Initial synchronization
+# ----------------------------------------------------------
 
 echo -e "${YELLOW}Checking Dropbox connectivity...${NC}"
 
 if check_online; then
     echo -e "${GREEN}Dropbox reachable.${NC}"
-    run_bisync
+
+    if ! run_bisync; then
+        echo
+        echo -e "${RED}Bisync failed — not launching Zim to avoid editing an unsynced notebook.${NC}"
+        exit 1
+    fi
+
 else
     echo -e "${YELLOW}Offline mode detected. Skipping sync.${NC}"
 fi
 
+
+# ----------------------------------------------------------
+# Launch Zim
+# ----------------------------------------------------------
+
 echo
 echo -e "${GREEN}Starting Zim...${NC}"
 
-zim "$NOTEBOOK"
+zim "$NOTEBOOK" 2>/dev/null
+
+
+# ----------------------------------------------------------
+# Sync after Zim closes
+# ----------------------------------------------------------
 
 echo
 echo -e "${YELLOW}Zim closed.${NC}"
@@ -148,6 +211,7 @@ if check_online; then
 else
     echo -e "${RED}Still offline. Changes remain local.${NC}"
 fi
+
 
 echo
 echo -e "${GREEN}Done.${NC}"
